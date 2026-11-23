@@ -1,0 +1,6 @@
+{
+  "name": "Ved's Medcare",
+  "description": "Your Trusted Healthcare Partner — Bilingual (Hindi & English) Medicine Information Library, Health Awareness Blog, D.Pharm Pharmacy Education Portal, and Healthcare Products Catalogue by Ved's Medcare, Bhopal, India.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

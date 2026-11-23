@@ -1,0 +1,475 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net — default deny all unmatched paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Reusable Hardened Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerified() && request.auth.token.email == 'drbsclinic27@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerified() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isValidSlug(val, maxLen) {
+      return isValidString(val, 2, maxLen) && val.matches('^[a-z0-9-]+$');
+    }
+
+    function isValidStringList(arr, maxItems) {
+      return arr is list && arr.size() <= maxItems && (arr.size() == 0 || (arr[0] is string && arr[0].size() <= 300));
+    }
+
+    // 3. Entity Validation Blueprints (synchronized with firebase-blueprint.json)
+
+    function isValidMedicine(data) {
+      return data.keys().hasAll([
+          'slug', 'nameEn', 'nameHi', 'genericName', 'brandNames',
+          'drugCategory', 'therapeuticCategory', 'classificationEn', 'classificationHi',
+          'usesEn', 'usesHi', 'mechanismEn', 'mechanismHi',
+          'sideEffectsEn', 'sideEffectsHi', 'precautionsEn', 'precautionsHi',
+          'contraindicationsEn', 'contraindicationsHi', 'storageEn', 'storageHi',
+          'references', 'reviewDate', 'published', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'slug', 'nameEn', 'nameHi', 'genericName', 'brandNames',
+          'drugCategory', 'therapeuticCategory', 'classificationEn', 'classificationHi',
+          'usesEn', 'usesHi', 'mechanismEn', 'mechanismHi',
+          'sideEffectsEn', 'sideEffectsHi', 'precautionsEn', 'precautionsHi',
+          'contraindicationsEn', 'contraindicationsHi', 'storageEn', 'storageHi',
+          'references', 'reviewDate', 'published', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && isValidSlug(data.slug, 120)
+        && isValidString(data.nameEn, 2, 160)
+        && isValidString(data.nameHi, 1, 200)
+        && isValidString(data.genericName, 2, 160)
+        && isValidStringList(data.brandNames, 10)
+        && isValidString(data.drugCategory, 2, 100)
+        && isValidString(data.therapeuticCategory, 2, 100)
+        && isValidString(data.classificationEn, 2, 240)
+        && isValidString(data.classificationHi, 1, 300)
+        && isValidString(data.usesEn, 10, 2500)
+        && isValidString(data.usesHi, 5, 3000)
+        && isValidString(data.mechanismEn, 10, 2500)
+        && isValidString(data.mechanismHi, 5, 3000)
+        && isValidString(data.sideEffectsEn, 10, 2500)
+        && isValidString(data.sideEffectsHi, 5, 3000)
+        && isValidString(data.precautionsEn, 10, 2500)
+        && isValidString(data.precautionsHi, 5, 3000)
+        && isValidString(data.contraindicationsEn, 10, 2500)
+        && isValidString(data.contraindicationsHi, 5, 3000)
+        && isValidString(data.storageEn, 5, 800)
+        && isValidString(data.storageHi, 5, 1000)
+        && isValidStringList(data.references, 10)
+        && isValidString(data.reviewDate, 4, 40)
+        && data.published is bool
+        && data.updatedBy == request.auth.uid
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidArticle(data) {
+      return data.keys().hasAll([
+          'slug', 'category', 'titleEn', 'titleHi', 'summaryEn', 'summaryHi',
+          'contentEn', 'contentHi', 'featuredImage', 'author', 'publishedDate',
+          'lastUpdatedDate', 'readMinutes', 'references', 'published',
+          'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'slug', 'category', 'titleEn', 'titleHi', 'summaryEn', 'summaryHi',
+          'contentEn', 'contentHi', 'featuredImage', 'author', 'publishedDate',
+          'lastUpdatedDate', 'readMinutes', 'references', 'published',
+          'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && isValidSlug(data.slug, 140)
+        && isValidString(data.category, 2, 80)
+        && isValidString(data.titleEn, 5, 200)
+        && isValidString(data.titleHi, 3, 240)
+        && isValidString(data.summaryEn, 10, 600)
+        && isValidString(data.summaryHi, 10, 700)
+        && isValidString(data.contentEn, 40, 20000)
+        && isValidString(data.contentHi, 40, 24000)
+        && isValidString(data.featuredImage, 1, 500)
+        && isValidString(data.author, 2, 100)
+        && isValidString(data.publishedDate, 4, 40)
+        && isValidString(data.lastUpdatedDate, 4, 40)
+        && data.readMinutes is number && data.readMinutes >= 1 && data.readMinutes <= 60
+        && isValidStringList(data.references, 12)
+        && data.published is bool
+        && data.updatedBy == request.auth.uid
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPharmacyNote(data) {
+      return data.keys().hasAll([
+          'slug', 'subject', 'languageLabel', 'titleEn', 'titleHi',
+          'shortNotesEn', 'shortNotesHi', 'detailedNotesEn', 'detailedNotesHi',
+          'definitionsEn', 'definitionsHi', 'practicalProcedureEn', 'practicalProcedureHi',
+          'diagramKey', 'pdfUrl', 'published', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'slug', 'subject', 'languageLabel', 'titleEn', 'titleHi',
+          'shortNotesEn', 'shortNotesHi', 'detailedNotesEn', 'detailedNotesHi',
+          'definitionsEn', 'definitionsHi', 'practicalProcedureEn', 'practicalProcedureHi',
+          'diagramKey', 'pdfUrl', 'published', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && isValidSlug(data.slug, 140)
+        && isValidString(data.subject, 2, 100)
+        && (data.languageLabel in ['Bilingual (EN + हिंदी)', 'English', 'हिंदी'])
+        && isValidString(data.titleEn, 4, 200)
+        && isValidString(data.titleHi, 3, 240)
+        && isValidString(data.shortNotesEn, 10, 3000)
+        && isValidString(data.shortNotesHi, 10, 3500)
+        && isValidString(data.detailedNotesEn, 20, 15000)
+        && isValidString(data.detailedNotesHi, 20, 18000)
+        && isValidString(data.definitionsEn, 0, 4000)
+        && isValidString(data.definitionsHi, 0, 4500)
+        && isValidString(data.practicalProcedureEn, 0, 6000)
+        && isValidString(data.practicalProcedureHi, 0, 7000)
+        && isValidString(data.diagramKey, 0, 80)
+        && isValidString(data.pdfUrl, 0, 500)
+        && data.published is bool
+        && data.updatedBy == request.auth.uid
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll([
+          'slug', 'category', 'nameEn', 'nameHi', 'image',
+          'descriptionEn', 'descriptionHi', 'featuresEn', 'featuresHi',
+          'usageEn', 'usageHi', 'precautionsEn', 'precautionsHi',
+          'published', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'slug', 'category', 'nameEn', 'nameHi', 'image',
+          'descriptionEn', 'descriptionHi', 'featuresEn', 'featuresHi',
+          'usageEn', 'usageHi', 'precautionsEn', 'precautionsHi',
+          'published', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && isValidSlug(data.slug, 140)
+        && isValidString(data.category, 2, 100)
+        && isValidString(data.nameEn, 2, 160)
+        && isValidString(data.nameHi, 2, 200)
+        && isValidString(data.image, 1, 500)
+        && isValidString(data.descriptionEn, 10, 3000)
+        && isValidString(data.descriptionHi, 10, 3500)
+        && isValidStringList(data.featuresEn, 10)
+        && isValidStringList(data.featuresHi, 10)
+        && isValidString(data.usageEn, 10, 2500)
+        && isValidString(data.usageHi, 10, 3000)
+        && isValidString(data.precautionsEn, 10, 2500)
+        && isValidString(data.precautionsHi, 10, 3000)
+        && data.published is bool
+        && data.updatedBy == request.auth.uid
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCategory(data) {
+      return data.keys().hasAll(['domain', 'nameEn', 'nameHi', 'published', 'updatedBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['domain', 'nameEn', 'nameHi', 'published', 'updatedBy', 'createdAt', 'updatedAt'])
+        && (data.domain in ['medicine', 'blog', 'pharmacy', 'product'])
+        && isValidString(data.nameEn, 2, 100)
+        && isValidString(data.nameHi, 1, 120)
+        && data.published is bool
+        && data.updatedBy == request.auth.uid
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidEnquiry(data) {
+      return data.keys().hasAll([
+          'name', 'email', 'phone', 'subject', 'message',
+          'sourceType', 'consentAccepted', 'status', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'name', 'email', 'phone', 'subject', 'message',
+          'sourceType', 'consentAccepted', 'status', 'createdAt'
+        ])
+        && isValidString(data.name, 2, 120)
+        && isValidString(data.email, 5, 160)
+        && data.email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
+        && isValidString(data.phone, 7, 24)
+        && isValidString(data.subject, 2, 180)
+        && isValidString(data.message, 10, 3000)
+        && (data.sourceType in ['contact', 'product_enquiry'])
+        && data.consentAccepted == true
+        && (data.status in ['new', 'reviewed', 'resolved'])
+        && data.createdAt is timestamp;
+    }
+
+    function isValidSiteSettings(data) {
+      return data.keys().hasAll([
+          'brandName', 'founderName', 'phone', 'whatsapp', 'email',
+          'locationEn', 'locationHi', 'instagramHandle', 'instagramUrl',
+          'seoTitleEn', 'seoTitleHi', 'seoDescriptionEn', 'seoDescriptionHi',
+          'googleAnalyticsId', 'googleSearchConsoleCode', 'updatedBy', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'brandName', 'founderName', 'phone', 'whatsapp', 'email',
+          'locationEn', 'locationHi', 'instagramHandle', 'instagramUrl',
+          'seoTitleEn', 'seoTitleHi', 'seoDescriptionEn', 'seoDescriptionHi',
+          'googleAnalyticsId', 'googleSearchConsoleCode', 'updatedBy', 'updatedAt'
+        ])
+        && isValidString(data.brandName, 2, 100)
+        && isValidString(data.founderName, 2, 100)
+        && isValidString(data.phone, 7, 30)
+        && isValidString(data.whatsapp, 7, 30)
+        && isValidString(data.email, 5, 160)
+        && data.email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
+        && isValidString(data.locationEn, 2, 160)
+        && isValidString(data.locationHi, 2, 200)
+        && isValidString(data.instagramHandle, 2, 80)
+        && isValidString(data.instagramUrl, 10, 240)
+        && isValidString(data.seoTitleEn, 5, 120)
+        && isValidString(data.seoTitleHi, 5, 150)
+        && isValidString(data.seoDescriptionEn, 10, 260)
+        && isValidString(data.seoDescriptionHi, 10, 300)
+        && isValidString(data.googleAnalyticsId, 0, 40)
+        && isValidString(data.googleSearchConsoleCode, 0, 120)
+        && data.updatedBy == request.auth.uid
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdminUser(data) {
+      return data.keys().hasAll(['email', 'role', 'addedBy', 'createdAt'])
+        && data.keys().hasOnly(['email', 'role', 'addedBy', 'createdAt'])
+        && isValidString(data.email, 5, 160)
+        && (data.role in ['super_admin', 'editor'])
+        && data.addedBy == request.auth.uid
+        && data.createdAt is timestamp;
+    }
+
+    function isValidReview(data) {
+      return data.keys().hasAll([
+          'reviewerName', 'roleEn', 'roleHi', 'rating',
+          'textEn', 'textHi', 'avatarColor', 'approved',
+          'createdDate', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'reviewerName', 'roleEn', 'roleHi', 'rating',
+          'textEn', 'textHi', 'avatarColor', 'approved',
+          'createdDate', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && isValidString(data.reviewerName, 2, 100)
+        && isValidString(data.roleEn, 2, 120)
+        && isValidString(data.roleHi, 0, 150)
+        && data.rating is int && data.rating >= 1 && data.rating <= 5
+        && isValidString(data.textEn, 10, 1200)
+        && isValidString(data.textHi, 0, 1400)
+        && isValidString(data.avatarColor, 7, 7)
+        && data.avatarColor.matches('^#[0-9A-Fa-f]{6}$')
+        && data.approved is bool
+        && isValidString(data.createdDate, 4, 24)
+        && data.updatedBy == request.auth.uid
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // 4. Collection Match Rules
+
+    match /medicines/{medicineId} {
+      allow get: if isValidId(medicineId) && ((resource != null && existing().published == true) || isAdmin());
+      allow list: if resource.data.published == true || isAdmin();
+      allow create: if isVerified() && isValidId(medicineId) && isValidMedicine(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isVerified() && isValidId(medicineId) && isValidMedicine(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'slug', 'nameEn', 'nameHi', 'genericName', 'brandNames',
+          'drugCategory', 'therapeuticCategory', 'classificationEn', 'classificationHi',
+          'usesEn', 'usesHi', 'mechanismEn', 'mechanismHi',
+          'sideEffectsEn', 'sideEffectsHi', 'precautionsEn', 'precautionsHi',
+          'contraindicationsEn', 'contraindicationsHi', 'storageEn', 'storageHi',
+          'references', 'reviewDate', 'published', 'updatedBy', 'updatedAt'
+        ])
+        && isAdmin();
+      allow delete: if isVerified() && isValidId(medicineId) && isAdmin();
+    }
+
+    match /articles/{articleId} {
+      allow get: if isValidId(articleId) && ((resource != null && existing().published == true) || isAdmin());
+      allow list: if resource.data.published == true || isAdmin();
+      allow create: if isVerified() && isValidId(articleId) && isValidArticle(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isVerified() && isValidId(articleId) && isValidArticle(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'slug', 'category', 'titleEn', 'titleHi', 'summaryEn', 'summaryHi',
+          'contentEn', 'contentHi', 'featuredImage', 'author', 'publishedDate',
+          'lastUpdatedDate', 'readMinutes', 'references', 'published',
+          'updatedBy', 'updatedAt'
+        ])
+        && isAdmin();
+      allow delete: if isVerified() && isValidId(articleId) && isAdmin();
+    }
+
+    match /pharmacyNotes/{noteId} {
+      allow get: if isValidId(noteId) && ((resource != null && existing().published == true) || isAdmin());
+      allow list: if resource.data.published == true || isAdmin();
+      allow create: if isVerified() && isValidId(noteId) && isValidPharmacyNote(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isVerified() && isValidId(noteId) && isValidPharmacyNote(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'slug', 'subject', 'languageLabel', 'titleEn', 'titleHi',
+          'shortNotesEn', 'shortNotesHi', 'detailedNotesEn', 'detailedNotesHi',
+          'definitionsEn', 'definitionsHi', 'practicalProcedureEn', 'practicalProcedureHi',
+          'diagramKey', 'pdfUrl', 'published', 'updatedBy', 'updatedAt'
+        ])
+        && isAdmin();
+      allow delete: if isVerified() && isValidId(noteId) && isAdmin();
+    }
+
+    match /products/{productId} {
+      allow get: if isValidId(productId) && ((resource != null && existing().published == true) || isAdmin());
+      allow list: if resource.data.published == true || isAdmin();
+      allow create: if isVerified() && isValidId(productId) && isValidProduct(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isVerified() && isValidId(productId) && isValidProduct(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'slug', 'category', 'nameEn', 'nameHi', 'image',
+          'descriptionEn', 'descriptionHi', 'featuresEn', 'featuresHi',
+          'usageEn', 'usageHi', 'precautionsEn', 'precautionsHi',
+          'published', 'updatedBy', 'updatedAt'
+        ])
+        && isAdmin();
+      allow delete: if isVerified() && isValidId(productId) && isAdmin();
+    }
+
+    match /categories/{categoryId} {
+      allow get: if isValidId(categoryId) && ((resource != null && existing().published == true) || isAdmin());
+      allow list: if resource.data.published == true || isAdmin();
+      allow create: if isVerified() && isValidId(categoryId) && isValidCategory(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isVerified() && isValidId(categoryId) && isValidCategory(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'domain', 'nameEn', 'nameHi', 'published', 'updatedBy', 'updatedAt'
+        ])
+        && isAdmin();
+      allow delete: if isVerified() && isValidId(categoryId) && isAdmin();
+    }
+
+    match /enquiries/{enquiryId} {
+      allow get: if isValidId(enquiryId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(enquiryId)
+        && isValidEnquiry(incoming())
+        && incoming().status == 'new'
+        && incoming().createdAt == request.time;
+      allow update: if isVerified() && isValidId(enquiryId) && isValidEnquiry(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+        && (existing().status != 'resolved' || isAdmin())
+        && isAdmin();
+      allow delete: if isVerified() && isValidId(enquiryId) && isAdmin();
+    }
+
+    match /siteSettings/{settingsId} {
+      allow get: if isValidId(settingsId) && settingsId == 'global';
+      allow list: if isAdmin();
+      allow create: if isVerified() && isValidId(settingsId) && settingsId == 'global'
+        && isValidSiteSettings(incoming())
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isVerified() && isValidId(settingsId) && settingsId == 'global'
+        && isValidSiteSettings(incoming())
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'brandName', 'founderName', 'phone', 'whatsapp', 'email',
+          'locationEn', 'locationHi', 'instagramHandle', 'instagramUrl',
+          'seoTitleEn', 'seoTitleHi', 'seoDescriptionEn', 'seoDescriptionHi',
+          'googleAnalyticsId', 'googleSearchConsoleCode', 'updatedBy', 'updatedAt'
+        ])
+        && isAdmin();
+      allow delete: if false;
+    }
+
+    match /admins/{adminUid} {
+      allow get: if isVerified() && isValidId(adminUid) && (request.auth.uid == adminUid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isVerified() && isValidId(adminUid) && isValidAdminUser(incoming())
+        && incoming().createdAt == request.time
+        && isAdmin();
+      allow update: if isVerified() && isValidId(adminUid) && isValidAdminUser(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['role'])
+        && isAdmin();
+      allow delete: if isVerified() && isValidId(adminUid) && isAdmin() && adminUid != request.auth.uid;
+    }
+
+    match /reviews/{reviewId} {
+      allow get: if isValidId(reviewId) && ((resource != null && existing().approved == true) || isAdmin());
+      allow list: if resource.data.approved == true || isAdmin();
+      allow create: if isVerified() && isValidId(reviewId) && isValidReview(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isVerified() && isValidId(reviewId) && isValidReview(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'reviewerName', 'roleEn', 'roleHi', 'rating',
+          'textEn', 'textHi', 'avatarColor', 'approved',
+          'createdDate', 'updatedBy', 'updatedAt'
+        ])
+        && isAdmin();
+      allow delete: if isVerified() && isValidId(reviewId) && isAdmin();
+    }
+
+    match /test/connection {
+      allow get: if true;
+      allow write: if false;
+    }
+  }
+}
